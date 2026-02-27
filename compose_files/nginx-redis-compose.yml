@@ -1,0 +1,77 @@
+services:
+  nginx:
+    image: nginx:latest
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost/
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    networks:
+    - app_network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      managed-by: docker-devops-agent
+      created-at: '2026-02-26T15:19:28'
+      environment: development
+    ports:
+    - 8080:80
+    volumes:
+    - nginx_config:/etc/nginx/conf.d
+    - nginx_html:/usr/share/nginx/html
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    networks:
+    - app_network
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      managed-by: docker-devops-agent
+      created-at: '2026-02-26T15:19:28'
+      environment: development
+    ports:
+    - 6379:6379
+    volumes:
+    - redis_data:/data
+networks:
+  app_network:
+    driver: bridge
+volumes:
+  nginx_config:
+    driver: local
+  nginx_html:
+    driver: local
+  redis_data:
+    driver: local

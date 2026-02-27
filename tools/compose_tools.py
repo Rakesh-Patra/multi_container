@@ -8,6 +8,7 @@ Tools:
 - compose_generate      : Generate a compose YAML from service specs
 - compose_diff          : Diff two compose files
 - backup_compose_file   : Backup a compose file with timestamp
+- trigger_temporal_deploy: Deploy a compose file using the Temporal orchestrator
 """
 
 import json
@@ -673,3 +674,49 @@ def backup_compose_file(file_path: str) -> str:
             safe_state=True,
         )
         return f"ERROR: Failed to create backup: {e}"
+
+@tool
+def trigger_temporal_deploy(file_path: str) -> str:
+    """Deploy a compose file using the Temporal orchestrator workflow.
+
+    Use this tool INSTEAD OF compose_up when the user asks to explicitly deploy
+    using "Temporal" or when an automated, reliable deployment via workflow is requested.
+    This tool triggers the Temporal deploy workflow which automatically validates,
+    backs up, deploys, tests, and auto-rolls back if tests fail.
+
+    Args:
+        file_path: Path to the compose file to deploy via Temporal.
+
+    Returns:
+        The workflow ID and execution status.
+    """
+    compose_log.info(
+        f"Triggering Temporal deploy for: {file_path}",
+        extra={"component": "compose.temporal"},
+    )
+
+    if not os.path.exists(file_path):
+        return f"ERROR: Compose file not found: {file_path}"
+
+    client_script = Path(__file__).parent.parent / "temporal" / "client.py"
+    
+    cmd = [sys.executable, str(client_script), "deploy", file_path]
+    compose_log.info(f"Executing Temporal Client: {' '.join(cmd)}", extra={"component": "compose.temporal"})
+
+    try:
+        # Run the temporal client as a subprocess to avoid asyncio loop conflicts inside sync tools
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600  # 10 minutes max for a full deploy/test/rollback loop
+        )
+        
+        if result.returncode == 0:
+            compose_log.info(f"Temporal Workflow completed successfully", extra={"component": "compose.temporal"})
+            return f"✓ Temporal Deployment Workflow Completed:\n\n{result.stdout}"
+        else:
+            compose_log.error(f"Temporal Workflow failed: {result.stderr}", extra={"component": "compose.temporal"})
+            return f"✗ Temporal Deployment Workflow FAILED:\n\nOutput:\n{result.stdout}\nErrors:\n{result.stderr}"
+
+    except subprocess.TimeoutExpired:
+        return f"ERROR: Temporal workflow timed out after 10 minutes."
+    except Exception as e:
+        return f"ERROR: Failed to trigger Temporal workflow: {e}"
